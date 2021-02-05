@@ -1,4 +1,4 @@
-# Exchange Information Analysis using Stream Processing
+## Exchange Information Analysis using Stream Processing
 
 In this project, we are going to analyze the exchange data using Apache Storm for Stream Processing. As we have no real exchange data we use random data for analysis. 
 In this project, we have some trading symbols. Assume that the trading symbols are from 1 to 40. The cost of each share is equal to its trading symbol multiply by 100 for example cost of the trading symbol with id 37 is equal to 3700. It can fluctuate to 1%. So a trading symbol with id 37 can be negotiated from 3663 Rial to 3737. Assume that we have a 10000 exchange code between 1 to 10000.
