@@ -1,27 +1,82 @@
-## Exchange Information Analysis using Stream Processing
+# Real-Time Stock Exchange Analysis with Apache Storm
 
-In this project, we are going to analyze the exchange data using Apache Storm for Stream Processing. As we have no real exchange data we use random data for analysis. 
-In this project, we have some trading symbols. Assume that the trading symbols are from 1 to 40. The cost of each share is equal to its trading symbol multiply by 100 for example cost of the trading symbol with id 37 is equal to 3700. It can fluctuate to 1%. So a trading symbol with id 37 can be negotiated from 3663 Rial to 3737. Assume that we have a 10000 exchange code between 1 to 10000.
-<br />
-<br />
-Exchange activity in Iran starts at 8:30 and ends at 12:30. I have written a program to generate exchange data randomly. Each trading symbol has to have a sell or buy order in a minute.
+A stream processing pipeline built with **Apache Storm** that processes a full trading day of simulated stock exchange orders and computes the matched trading volume for each trading symbol.
 
-Sell or buy records should be as below:
-Time, Exchange Code, Sell or Buy (Sell 0 Buy 1), Trading Symbol ID, Cost, Shared Number
+**Stack:** Java 8, Apache Storm 2.1, Maven, OpenCSV
 
-For example, a record can be like:<br />
-**08:32:28, 162, 1, 29, 2910, 97**
+## Overview
 
-So Exchange code with ID 162 at 08:32:28 has ordered 97 shares from ID 29 with a cost of  2910 Rial.
+The pipeline simulates the Tehran Stock Exchange trading session (8:30 to 12:30, 240 minutes) and processes **2.4 million buy and sell orders** through a parallel Storm topology.
 
-**Assume that Shared numbers are between 1 and 100.**
-  
-As each Exchange code has to have at least one sell or buy order in a minute and the number of all exchange codes are 10000 and activities can be done between 4 hours or 240 minutes, so we should generate 24,000,000 random records.
+- **40 trading symbols**, each priced at `symbol ID × 100` Rial with up to ±1% fluctuation (for example, symbol 37 trades between 3,663 and 3,737 Rial)
+- **10,000 exchange codes** (traders), each placing one buy or sell order per minute
+- **1 to 100 shares** per order
 
-Random records will be stored in a .csv file and they will be processed with Apache Storm. <br />
-At the end of the process, the output will be stored in a .csv file containing the number of each trading symbol's successful negotiation:
+## Architecture
 
-1,253<br />
-2,0<br />
-...<br />
-40,10
+```mermaid
+flowchart LR
+    A[GenerateData<br/>records.csv] --> B[InputSpout<br/>× 1]
+    B -->|fields grouping<br/>by time| C[TimeExtractionBolt<br/>× 240]
+    C -->|fields grouping<br/>by trading symbol| D[TradingBolt<br/>× 40]
+    D -->|shuffle grouping| E[OutputBolt<br/>× 1<br/>result.csv]
+```
+
+| Component | Parallelism | Role |
+|---|---|---|
+| `GenerateData` | | Generates 2.4M random orders and writes them to `records.csv` |
+| `InputSpout` | 1 | Reads orders and emits them into the topology |
+| `TimeExtractionBolt` | 240 | Partitioned by minute (one task per trading minute); strips the timestamp and forwards the order |
+| `TradingBolt` | 40 | Partitioned by trading symbol (one task per symbol); keeps buy and sell volume per price and matches orders at the same price |
+| `OutputBolt` | 1 | Collects the matched volume per symbol and writes `result.csv` |
+
+**Fields grouping** sends all orders for the same trading symbol to the same `TradingBolt` task, so each task can keep its own order state in memory without coordination.
+
+## Data Format
+
+**Input** (`records.csv`): one order per line
+
+```
+Time, Exchange Code, Order Type (0 or 1 for sell or buy), Trading Symbol, Price, Shares
+08:30:00, 1, 1, 22, 2178, 64
+```
+
+Exchange code 1 placed an order at 08:30:00 for 64 shares of symbol 22 at 2,178 Rial.
+
+**Output** (`result.csv`): matched volume per trading symbol
+
+```
+Trading Symbol, Matched Shares
+1, 64460
+2, 56365
+...
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Java 8 or later
+- Maven
+
+### Run
+
+```bash
+mvn compile exec:java -Dexec.mainClass=Main
+```
+
+This generates `records.csv`, runs the topology on a local Storm cluster, and writes the results to `result.csv`.
+
+## Project Structure
+
+```
+src/main/java/
+├── Main.java                    # Builds and submits the topology
+├── GenerateData.java            # Generates simulated exchange orders
+├── InputSpout.java              # Spout that emits orders
+├── Record.java                  # Order model
+└── storm/Bolts/
+    ├── TimeExtractionBolt.java
+    ├── TradingBolt.java
+    └── OutputBolt.java
+```
